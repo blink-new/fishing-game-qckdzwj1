@@ -52,8 +52,7 @@ export function FishingGame() {
   });
   
   const [fish, setFish] = useState<Fish[]>([]);
-  const [fishingLine, setFishingLine] = useState({ x: 400, y: 200, length: 0 });
-  const [isFishing, setIsFishing] = useState(false);
+  const [fishingLine, setFishingLine] = useState({ length: 0, isExtending: false, isRetracting: false });
   const [boatPosition, setBoatPosition] = useState(400);
   const [caughtFish, setCaughtFish] = useState<Fish | null>(null);
   const [timingGame, setTimingGame] = useState<TimingGame>({
@@ -63,6 +62,7 @@ export function FishingGame() {
     targetZone: { start: 60, end: 80 },
     success: false,
   });
+  const [isSpacePressed, setIsSpacePressed] = useState(false);
   
   const gameAreaRef = useRef<HTMLDivElement>(null);
   const animationRef = useRef<number>();
@@ -79,7 +79,7 @@ export function FishingGame() {
       newFish.push({
         id: `fish-${i}`,
         x: Math.random() * 750,
-        y: 280 + Math.random() * 280, // Between water surface and bottom
+        y: 280 + Math.random() * 280,
         type: fishType,
         value: FISH_TYPES[fishType].value,
         speedX: FISH_TYPES[fishType].speedX + Math.random() * 0.5,
@@ -94,8 +94,10 @@ export function FishingGame() {
     setFish(newFish);
   }, []);
 
-  // Enhanced fish animation with vertical movement
+  // Fixed fish animation loop
   const animate = useCallback(() => {
+    if (!gameState.isPlaying || gameState.timer <= 0) return;
+    
     setFish(prevFish => 
       prevFish.map(f => {
         let newX = f.x + f.speedX * f.directionX;
@@ -127,10 +129,20 @@ export function FishingGame() {
       })
     );
     
+    animationRef.current = requestAnimationFrame(animate);
+  }, [gameState.isPlaying, gameState.timer]);
+
+  // Start the fish animation when game starts
+  useEffect(() => {
     if (gameState.isPlaying && gameState.timer > 0) {
       animationRef.current = requestAnimationFrame(animate);
     }
-  }, [gameState.isPlaying, gameState.timer]);
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, [gameState.isPlaying, animate]);
 
   // Timing game animation
   const animateTimingGame = useCallback(() => {
@@ -187,62 +199,66 @@ export function FishingGame() {
   // Start game
   const startGame = () => {
     setGameState(prev => ({ ...prev, isPlaying: true }));
+    setFishingLine({ length: 0, isExtending: false, isRetracting: false });
     generateFish();
-    animate();
   };
 
-  // Enhanced fishing - now attached to boat
-  const handleFishing = () => {
-    if (!gameState.isPlaying || isFishing || timingGame.isActive) return;
+  // Handle fishing line control with space bar
+  const handleFishingLineControl = () => {
+    if (!gameState.isPlaying || timingGame.isActive) return;
     
-    setIsFishing(true);
-    setFishingLine({ x: boatPosition, y: 200, length: 0 });
-    
-    // Cast line animation
-    let currentLength = 0;
-    const castInterval = setInterval(() => {
-      currentLength += 12;
-      setFishingLine(prev => ({ ...prev, length: currentLength }));
+    if (!fishingLine.isExtending && !fishingLine.isRetracting && fishingLine.length === 0) {
+      // Start extending line
+      setFishingLine(prev => ({ ...prev, isExtending: true }));
+    } else if (fishingLine.isExtending) {
+      // Stop extending and check for fish
+      setFishingLine(prev => ({ ...prev, isExtending: false }));
       
-      if (currentLength >= 380) {
-        clearInterval(castInterval);
-        
-        // Check for fish catch
-        const nearbyFish = fish.find(f => 
-          Math.abs(f.x - boatPosition) < 40 && 
-          Math.abs(f.y - (200 + currentLength)) < 40
-        );
-        
-        if (nearbyFish) {
-          setFish(prev => prev.filter(f => f.id !== nearbyFish.id));
-          setTimingGame({
-            isActive: true,
-            fish: nearbyFish,
-            progress: 0,
-            targetZone: { 
-              start: 50 + Math.random() * 20, 
-              end: 70 + Math.random() * 20 
-            },
-            success: false,
-          });
-          animateTimingGame();
-        }
-        
-        // Reel back in
-        setTimeout(() => {
-          const reelInterval = setInterval(() => {
-            currentLength -= 15;
-            setFishingLine(prev => ({ ...prev, length: currentLength }));
-            
-            if (currentLength <= 0) {
-              clearInterval(reelInterval);
-              setIsFishing(false);
-            }
-          }, 40);
-        }, nearbyFish ? 100 : 1000);
+      // Check for fish catch
+      const lineEndY = 220 + fishingLine.length;
+      const nearbyFish = fish.find(f => 
+        Math.abs(f.x - boatPosition) < 50 && 
+        Math.abs(f.y - lineEndY) < 50
+      );
+      
+      if (nearbyFish) {
+        setFish(prev => prev.filter(f => f.id !== nearbyFish.id));
+        setTimingGame({
+          isActive: true,
+          fish: nearbyFish,
+          progress: 0,
+          targetZone: { 
+            start: 50 + Math.random() * 20, 
+            end: 70 + Math.random() * 20 
+          },
+          success: false,
+        });
+        animateTimingGame();
       }
-    }, 40);
+      
+      // Start retracting line
+      setTimeout(() => {
+        setFishingLine(prev => ({ ...prev, isRetracting: true }));
+      }, 500);
+    }
   };
+
+  // Fishing line animation
+  useEffect(() => {
+    if (!gameState.isPlaying) return;
+    
+    const interval = setInterval(() => {
+      if (fishingLine.isExtending && fishingLine.length < 350) {
+        setFishingLine(prev => ({ ...prev, length: prev.length + 8 }));
+      } else if (fishingLine.isRetracting && fishingLine.length > 0) {
+        setFishingLine(prev => ({ ...prev, length: prev.length - 12 }));
+      } else if (fishingLine.isRetracting && fishingLine.length <= 0) {
+        setFishingLine({ length: 0, isExtending: false, isRetracting: false });
+      }
+    }, 50);
+    
+    return () => clearInterval(interval);
+  }, [gameState.isPlaying, fishingLine.isExtending, fishingLine.isRetracting, fishingLine.length]);
 
   // Timer countdown
   useEffect(() => {
@@ -259,21 +275,36 @@ export function FishingGame() {
     }
   }, [gameState.isPlaying, gameState.timer]);
 
-  // Enhanced boat controls
+  // Enhanced keyboard controls
   useEffect(() => {
-    const handleKeyPress = (e: KeyboardEvent) => {
+    const handleKeyDown = (e: KeyboardEvent) => {
       if (!gameState.isPlaying || timingGame.isActive) return;
       
       if (e.key === 'ArrowLeft' && boatPosition > 80) {
         setBoatPosition(prev => prev - 15);
       } else if (e.key === 'ArrowRight' && boatPosition < 720) {
         setBoatPosition(prev => prev + 15);
+      } else if (e.key === ' ' && !isSpacePressed) {
+        e.preventDefault();
+        setIsSpacePressed(true);
+        handleFishingLineControl();
       }
     };
     
-    window.addEventListener('keydown', handleKeyPress);
-    return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [gameState.isPlaying, boatPosition, timingGame.isActive]);
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === ' ') {
+        setIsSpacePressed(false);
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [gameState.isPlaying, boatPosition, timingGame.isActive, isSpacePressed, fishingLine, fish]);
 
   // Cleanup animations
   useEffect(() => {
@@ -324,6 +355,19 @@ export function FishingGame() {
         </Card>
       </div>
 
+      {/* Fishing Instructions */}
+      {gameState.isPlaying && (
+        <div className="absolute top-4 right-4 z-10">
+          <Card className="p-3 bg-black/80 text-white border-none">
+            <div className="text-sm space-y-1">
+              <p>⬅️➡️ Déplacer le bateau</p>
+              <p>🎯 [ESPACE] Contrôler le fil</p>
+              <p>Ligne: {fishingLine.length.toFixed(0)}m</p>
+            </div>
+          </Card>
+        </div>
+      )}
+
       {/* Timing Game UI */}
       <AnimatePresence>
         {timingGame.isActive && (
@@ -335,8 +379,8 @@ export function FishingGame() {
           >
             <Card className="p-6 bg-white/95 backdrop-blur-sm border-2 border-blue-500">
               <div className="text-center mb-4">
-                <h3 className="text-lg font-bold text-blue-800">Hooked!</h3>
-                <p className="text-sm text-gray-600">Click when the line is in the green zone!</p>
+                <h3 className="text-lg font-bold text-blue-800">🎣 Poisson Accroché!</h3>
+                <p className="text-sm text-gray-600">Cliquez dans la zone verte!</p>
               </div>
               
               <div className="relative w-64 h-6 bg-gray-200 rounded-full mb-4">
@@ -357,7 +401,7 @@ export function FishingGame() {
                 onClick={handleTimingClick}
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white"
               >
-                CATCH! 
+                ATTRAPER! 🐟
               </Button>
             </Card>
           </motion.div>
@@ -367,8 +411,7 @@ export function FishingGame() {
       {/* Game Area */}
       <div 
         ref={gameAreaRef}
-        className="w-full h-full relative cursor-crosshair"
-        onClick={handleFishing}
+        className="w-full h-full relative"
       >
         {/* Water Surface */}
         <div className="absolute top-52 w-full h-1 bg-blue-300 opacity-60 shadow-lg"></div>
@@ -410,16 +453,26 @@ export function FishingGame() {
           </div>
         </motion.div>
 
-        {/* Enhanced Fishing Line - attached to boat */}
-        {isFishing && (
+        {/* Fishing Line - user controlled */}
+        {fishingLine.length > 0 && (
           <div
             className="absolute w-0.5 bg-gray-800 z-10"
             style={{
-              left: boatPosition + 8, // Offset to fishing rod position
+              left: boatPosition + 8,
               top: 220,
               height: fishingLine.length,
               transformOrigin: 'top',
-              animation: 'fishingLine 0.5s ease-out',
+            }}
+          />
+        )}
+
+        {/* Fishing Line Hook */}
+        {fishingLine.length > 0 && (
+          <div
+            className="absolute w-3 h-3 bg-silver-500 rounded-full border-2 border-gray-600 z-10"
+            style={{
+              left: boatPosition + 6,
+              top: 220 + fishingLine.length,
             }}
           />
         )}
@@ -434,7 +487,7 @@ export function FishingGame() {
               exit={{ opacity: 0, scale: 0.5 }}
               style={{ left: boatPosition - 20, top: 180 }}
             >
-              +${caughtFish.value} 
+              +${caughtFish.value} 🐟
             </motion.div>
           )}
         </AnimatePresence>
@@ -518,27 +571,27 @@ export function FishingGame() {
         <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-50">
           <Card className="p-8 text-center bg-white/95 backdrop-blur-sm border-2 border-blue-500">
             <h1 className="text-3xl font-bold mb-4 text-blue-800">
-              {gameState.timer === 0 ? 'Game Over!' : 'Pixel Fishing Pro'}
+              {gameState.timer === 0 ? 'Game Over!' : 'Jeu de Pêche Pro'}
             </h1>
             
             {gameState.timer === 0 && (
               <div className="mb-4 space-y-2">
-                <p className="text-lg">Final Score: ${gameState.money}</p>
-                <p className="text-sm">Fish Caught: {gameState.fishCaught}</p>
+                <p className="text-lg">Score Final: ${gameState.money}</p>
+                <p className="text-sm">Poissons Attrapés: {gameState.fishCaught}</p>
               </div>
             )}
             
             <div className="mb-4 text-sm text-gray-600 space-y-1">
-              <p> Click to cast your line!</p>
-              <p> Use arrow keys to move your boat</p>
-              <p> Click at the right moment to catch fish!</p>
+              <p>⬅️➡️ Flèches pour déplacer le bateau</p>
+              <p>🎯 [ESPACE] pour contrôler le fil de pêche</p>
+              <p>🐟 Cliquez au bon moment pour attraper!</p>
             </div>
             
             <Button 
               onClick={startGame}
               className="bg-blue-600 hover:bg-blue-700 text-white text-lg px-8 py-3"
             >
-              {gameState.timer === 0 ? 'Play Again' : 'Start Fishing'} 
+              {gameState.timer === 0 ? 'Rejouer' : 'Commencer'} 🎣
             </Button>
           </Card>
         </div>
