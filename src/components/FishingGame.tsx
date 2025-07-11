@@ -35,6 +35,12 @@ interface TimingGame {
   success: boolean;
 }
 
+interface FishBite {
+  isActive: boolean;
+  intensity: number;
+  fish: Fish | null;
+}
+
 const FISH_TYPES = {
   small: { value: 10, color: '#4F46E5', size: 20, speedX: 2, speedY: 1 },
   medium: { value: 25, color: '#EF4444', size: 30, speedX: 1.5, speedY: 0.8 },
@@ -62,11 +68,17 @@ export function FishingGame() {
     targetZone: { start: 60, end: 80 },
     success: false,
   });
+  const [fishBite, setFishBite] = useState<FishBite>({
+    isActive: false,
+    intensity: 0,
+    fish: null,
+  });
   const [isSpacePressed, setIsSpacePressed] = useState(false);
   
   const gameAreaRef = useRef<HTMLDivElement>(null);
   const animationRef = useRef<number>();
   const timingRef = useRef<number>();
+  const biteAnimationRef = useRef<number>();
 
   // Generate fish with improved swimming patterns
   const generateFish = useCallback(() => {
@@ -144,6 +156,30 @@ export function FishingGame() {
     };
   }, [gameState.isPlaying, animate]);
 
+  // Fish bite animation
+  const animateFishBite = useCallback(() => {
+    if (!fishBite.isActive) return;
+    
+    setFishBite(prev => {
+      const newIntensity = Math.sin(Date.now() * 0.02) * 10 + 10;
+      return { ...prev, intensity: newIntensity };
+    });
+    
+    biteAnimationRef.current = requestAnimationFrame(animateFishBite);
+  }, [fishBite.isActive]);
+
+  // Start fish bite animation
+  useEffect(() => {
+    if (fishBite.isActive) {
+      biteAnimationRef.current = requestAnimationFrame(animateFishBite);
+    }
+    return () => {
+      if (biteAnimationRef.current) {
+        cancelAnimationFrame(biteAnimationRef.current);
+      }
+    };
+  }, [fishBite.isActive, animateFishBite]);
+
   // Timing game animation
   const animateTimingGame = useCallback(() => {
     if (!timingGame.isActive) return;
@@ -194,18 +230,22 @@ export function FishingGame() {
         success: false,
       });
     }
+    
+    // Reset fish bite animation
+    setFishBite({ isActive: false, intensity: 0, fish: null });
   };
 
   // Start game
   const startGame = () => {
     setGameState(prev => ({ ...prev, isPlaying: true }));
     setFishingLine({ length: 0, isExtending: false, isRetracting: false });
+    setFishBite({ isActive: false, intensity: 0, fish: null });
     generateFish();
   };
 
   // Handle fishing line control with space bar
   const handleFishingLineControl = () => {
-    if (!gameState.isPlaying || timingGame.isActive) return;
+    if (!gameState.isPlaying || timingGame.isActive || fishBite.isActive) return;
     
     if (!fishingLine.isExtending && !fishingLine.isRetracting && fishingLine.length === 0) {
       // Start extending line
@@ -222,24 +262,37 @@ export function FishingGame() {
       );
       
       if (nearbyFish) {
-        setFish(prev => prev.filter(f => f.id !== nearbyFish.id));
-        setTimingGame({
+        // Start fish bite animation
+        setFishBite({
           isActive: true,
+          intensity: 0,
           fish: nearbyFish,
-          progress: 0,
-          targetZone: { 
-            start: 50 + Math.random() * 20, 
-            end: 70 + Math.random() * 20 
-          },
-          success: false,
         });
-        animateTimingGame();
+        
+        // Remove fish from water
+        setFish(prev => prev.filter(f => f.id !== nearbyFish.id));
+        
+        // Show bite animation for 2 seconds, then start timing game
+        setTimeout(() => {
+          setFishBite({ isActive: false, intensity: 0, fish: null });
+          setTimingGame({
+            isActive: true,
+            fish: nearbyFish,
+            progress: 0,
+            targetZone: { 
+              start: 50 + Math.random() * 20, 
+              end: 70 + Math.random() * 20 
+            },
+            success: false,
+          });
+          animateTimingGame();
+        }, 2000);
+      } else {
+        // No fish caught, start retracting line
+        setTimeout(() => {
+          setFishingLine(prev => ({ ...prev, isRetracting: true }));
+        }, 500);
       }
-      
-      // Start retracting line
-      setTimeout(() => {
-        setFishingLine(prev => ({ ...prev, isRetracting: true }));
-      }, 500);
     }
   };
 
@@ -315,6 +368,9 @@ export function FishingGame() {
       if (timingRef.current) {
         cancelAnimationFrame(timingRef.current);
       }
+      if (biteAnimationRef.current) {
+        cancelAnimationFrame(biteAnimationRef.current);
+      }
     };
   }, []);
 
@@ -363,10 +419,46 @@ export function FishingGame() {
               <p>⬅️➡️ Déplacer le bateau</p>
               <p>🎯 [ESPACE] Contrôler le fil</p>
               <p>Ligne: {fishingLine.length.toFixed(0)}m</p>
+              {fishBite.isActive && (
+                <p className="text-yellow-400 animate-pulse">🐟 Un poisson mord!</p>
+              )}
             </div>
           </Card>
         </div>
       )}
+
+      {/* Fish Bite Alert */}
+      <AnimatePresence>
+        {fishBite.isActive && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.8 }}
+            className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-40"
+          >
+            <Card className="p-6 bg-yellow-400/95 backdrop-blur-sm border-2 border-yellow-600">
+              <div className="text-center">
+                <motion.div
+                  animate={{ 
+                    scale: [1, 1.1, 1],
+                    rotate: [0, 5, -5, 0] 
+                  }}
+                  transition={{ duration: 0.5, repeat: Infinity }}
+                  className="text-4xl mb-2"
+                >
+                  🎣
+                </motion.div>
+                <h3 className="text-xl font-bold text-yellow-900 mb-2">
+                  Un poisson mord!
+                </h3>
+                <p className="text-sm text-yellow-800">
+                  Préparez-vous à l'attraper...
+                </p>
+              </div>
+            </Card>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Timing Game UI */}
       <AnimatePresence>
@@ -453,9 +545,9 @@ export function FishingGame() {
           </div>
         </motion.div>
 
-        {/* Fishing Line - user controlled */}
+        {/* Fishing Line - user controlled with bite animation */}
         {fishingLine.length > 0 && (
-          <div
+          <motion.div
             className="absolute w-0.5 bg-gray-800 z-10"
             style={{
               left: boatPosition + 8,
@@ -463,18 +555,54 @@ export function FishingGame() {
               height: fishingLine.length,
               transformOrigin: 'top',
             }}
+            animate={fishBite.isActive ? {
+              x: [0, fishBite.intensity * 0.5, -fishBite.intensity * 0.5, 0],
+              scaleX: [1, 1.1, 0.9, 1],
+            } : {}}
+            transition={{ duration: 0.1, repeat: fishBite.isActive ? Infinity : 0 }}
           />
         )}
 
-        {/* Fishing Line Hook */}
+        {/* Fishing Line Hook with bite animation */}
         {fishingLine.length > 0 && (
-          <div
+          <motion.div
             className="absolute w-3 h-3 bg-silver-500 rounded-full border-2 border-gray-600 z-10"
             style={{
               left: boatPosition + 6,
               top: 220 + fishingLine.length,
             }}
+            animate={fishBite.isActive ? {
+              x: [0, fishBite.intensity, -fishBite.intensity, 0],
+              y: [0, fishBite.intensity * 0.3, -fishBite.intensity * 0.3, 0],
+              scale: [1, 1.2, 0.8, 1],
+            } : {}}
+            transition={{ duration: 0.1, repeat: fishBite.isActive ? Infinity : 0 }}
           />
+        )}
+
+        {/* Water Ripples when fish bites */}
+        {fishBite.isActive && (
+          <motion.div
+            className="absolute z-10"
+            style={{
+              left: boatPosition - 20,
+              top: 220 + fishingLine.length - 20,
+              width: 40,
+              height: 40,
+            }}
+            initial={{ opacity: 0, scale: 0.5 }}
+            animate={{ 
+              opacity: [0, 0.8, 0],
+              scale: [0.5, 2, 3],
+            }}
+            transition={{ 
+              duration: 1, 
+              repeat: Infinity,
+              ease: "easeOut"
+            }}
+          >
+            <div className="w-full h-full rounded-full border-2 border-blue-300 opacity-60"></div>
+          </motion.div>
         )}
 
         {/* Caught Fish Animation */}
