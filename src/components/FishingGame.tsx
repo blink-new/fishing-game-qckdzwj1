@@ -251,44 +251,66 @@ export function FishingGame() {
       // Start extending line
       setFishingLine(prev => ({ ...prev, isExtending: true }));
     } else if (fishingLine.isExtending) {
-      // Stop extending and check for fish
+      // Stop extending and check for fish with bite probability based on fish type
       setFishingLine(prev => ({ ...prev, isExtending: false }));
       
-      // Check for fish catch
+      // Check for fish catch with bite probability based on fish type
       const lineEndY = 220 + fishingLine.length;
-      const nearbyFish = fish.find(f => 
+      const candidateFish = fish.filter(f => 
         Math.abs(f.x - boatPosition) < 50 && 
         Math.abs(f.y - lineEndY) < 50
       );
       
-      if (nearbyFish) {
-        // Start fish bite animation
-        setFishBite({
-          isActive: true,
-          intensity: 0,
-          fish: nearbyFish,
-        });
+      if (candidateFish.length > 0) {
+        // Calculate bite probabilities - small blue fish bite more often
+        const fishWithProbability = candidateFish.map(f => ({
+          fish: f,
+          probability: f.type === 'small' ? 0.8 :    // 80% chance for small blue fish
+                      f.type === 'medium' ? 0.6 :   // 60% chance for medium red fish
+                      f.type === 'large' ? 0.4 :    // 40% chance for large orange fish
+                      0.2                           // 20% chance for big gray sharks
+        }));
         
-        // Remove fish from water
-        setFish(prev => prev.filter(f => f.id !== nearbyFish.id));
+        // Try each fish based on their probability
+        const biteAttempts = fishWithProbability.filter(f => Math.random() < f.probability);
         
-        // Show bite animation for 2 seconds, then start timing game
-        setTimeout(() => {
-          setFishBite({ isActive: false, intensity: 0, fish: null });
-          setTimingGame({
+        if (biteAttempts.length > 0) {
+          // Choose the first fish that bites (or random if multiple)
+          const nearbyFish = biteAttempts[Math.floor(Math.random() * biteAttempts.length)].fish;
+          
+          // Start fish bite animation
+          setFishBite({
             isActive: true,
+            intensity: 0,
             fish: nearbyFish,
-            progress: 0,
-            targetZone: { 
-              start: 50 + Math.random() * 20, 
-              end: 70 + Math.random() * 20 
-            },
-            success: false,
           });
-          animateTimingGame();
-        }, 2000);
+          
+          // Remove fish from water
+          setFish(prev => prev.filter(f => f.id !== nearbyFish.id));
+          
+          // Show bite animation for 2 seconds, then start timing game
+          setTimeout(() => {
+            setFishBite({ isActive: false, intensity: 0, fish: null });
+            setTimingGame({
+              isActive: true,
+              fish: nearbyFish,
+              progress: 0,
+              targetZone: { 
+                start: 50 + Math.random() * 20, 
+                end: 70 + Math.random() * 20 
+              },
+              success: false,
+            });
+            animateTimingGame();
+          }, 2000);
+        } else {
+          // No fish bit, start retracting line
+          setTimeout(() => {
+            setFishingLine(prev => ({ ...prev, isRetracting: true }));
+          }, 500);
+        }
       } else {
-        // No fish caught, start retracting line
+        // No fish nearby, start retracting line
         setTimeout(() => {
           setFishingLine(prev => ({ ...prev, isRetracting: true }));
         }, 500);
@@ -620,7 +642,7 @@ export function FishingGame() {
           )}
         </AnimatePresence>
 
-        {/* Enhanced Underwater Scene */}
+        {/* Enhanced Underwater Scene with Rich Marine Vegetation */}
         <div className="absolute top-52 w-full h-full bg-gradient-to-b from-blue-300 via-blue-500 to-blue-800">
           
           {/* Enhanced Fish with better swimming */}
@@ -674,23 +696,202 @@ export function FishingGame() {
             </motion.div>
           ))}
 
-          {/* Enhanced underwater environment */}
-          <div className="absolute bottom-0 left-10 w-2 h-20 bg-gradient-to-t from-green-800 to-green-600 rounded-t-full"></div>
-          <div className="absolute bottom-0 left-32 w-2 h-16 bg-gradient-to-t from-green-700 to-green-500 rounded-t-full"></div>
-          <div className="absolute bottom-0 right-20 w-2 h-24 bg-gradient-to-t from-green-800 to-green-600 rounded-t-full"></div>
-          <div className="absolute bottom-0 right-40 w-2 h-18 bg-gradient-to-t from-green-700 to-green-500 rounded-t-full"></div>
+          {/* Rich Marine Vegetation */}
           
-          {/* Bubbles */}
-          <div className="absolute bottom-20 left-1/4 w-2 h-2 bg-blue-100 rounded-full opacity-60 animate-bounce"></div>
-          <div className="absolute bottom-32 right-1/3 w-1 h-1 bg-blue-100 rounded-full opacity-60 animate-bounce" style={{ animationDelay: '0.5s' }}></div>
-          <div className="absolute bottom-28 left-2/3 w-1.5 h-1.5 bg-blue-100 rounded-full opacity-60 animate-bounce" style={{ animationDelay: '1s' }}></div>
+          {/* Tall Kelp Forest */}
+          <motion.div 
+            className="absolute bottom-0 left-16 w-4 h-32 bg-gradient-to-t from-green-900 via-green-700 to-green-500 rounded-t-full"
+            animate={{ 
+              rotateZ: [0, 3, -3, 0],
+              scaleY: [1, 1.05, 0.95, 1] 
+            }}
+            transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+          />
+          <motion.div 
+            className="absolute bottom-0 left-20 w-3 h-28 bg-gradient-to-t from-green-800 via-green-600 to-green-400 rounded-t-full"
+            animate={{ 
+              rotateZ: [0, -2, 4, 0],
+              scaleY: [1, 0.95, 1.05, 1] 
+            }}
+            transition={{ duration: 3.5, repeat: Infinity, ease: "easeInOut" }}
+          />
+          <motion.div 
+            className="absolute bottom-0 left-12 w-2 h-24 bg-gradient-to-t from-green-800 to-green-600 rounded-t-full"
+            animate={{ 
+              rotateZ: [0, 2, -2, 0] 
+            }}
+            transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
+          />
           
-          {/* Ocean floor */}
-          <div className="absolute bottom-0 w-full h-12 bg-gradient-to-t from-amber-800 to-amber-600"></div>
+          {/* Medium Kelp */}
+          <motion.div 
+            className="absolute bottom-0 left-64 w-3 h-20 bg-gradient-to-t from-green-900 to-green-600 rounded-t-full"
+            animate={{ 
+              rotateZ: [0, -3, 3, 0] 
+            }}
+            transition={{ duration: 4.5, repeat: Infinity, ease: "easeInOut" }}
+          />
+          <motion.div 
+            className="absolute bottom-0 left-68 w-2 h-16 bg-gradient-to-t from-green-800 to-green-500 rounded-t-full"
+            animate={{ 
+              rotateZ: [0, 4, -2, 0] 
+            }}
+            transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+          />
           
-          {/* Rocks */}
-          <div className="absolute bottom-0 left-1/4 w-8 h-4 bg-gray-600 rounded-t-lg"></div>
-          <div className="absolute bottom-0 right-1/4 w-6 h-3 bg-gray-700 rounded-t-lg"></div>
+          {/* Right Side Kelp Forest */}
+          <motion.div 
+            className="absolute bottom-0 right-32 w-4 h-36 bg-gradient-to-t from-green-900 via-green-700 to-green-500 rounded-t-full"
+            animate={{ 
+              rotateZ: [0, -4, 4, 0],
+              scaleY: [1, 1.08, 0.92, 1] 
+            }}
+            transition={{ duration: 5.5, repeat: Infinity, ease: "easeInOut" }}
+          />
+          <motion.div 
+            className="absolute bottom-0 right-28 w-3 h-30 bg-gradient-to-t from-green-800 to-green-600 rounded-t-full"
+            animate={{ 
+              rotateZ: [0, 3, -3, 0] 
+            }}
+            transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+          />
+          <motion.div 
+            className="absolute bottom-0 right-24 w-2 h-22 bg-gradient-to-t from-green-800 to-green-500 rounded-t-full"
+            animate={{ 
+              rotateZ: [0, -2, 2, 0] 
+            }}
+            transition={{ duration: 3.5, repeat: Infinity, ease: "easeInOut" }}
+          />
+          
+          {/* Smaller Seaweed */}
+          <motion.div 
+            className="absolute bottom-0 left-80 w-2 h-12 bg-gradient-to-t from-green-700 to-green-500 rounded-t-full"
+            animate={{ 
+              rotateZ: [0, 5, -5, 0] 
+            }}
+            transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+          />
+          <motion.div 
+            className="absolute bottom-0 left-120 w-1.5 h-8 bg-gradient-to-t from-green-600 to-green-400 rounded-t-full"
+            animate={{ 
+              rotateZ: [0, -3, 3, 0] 
+            }}
+            transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+          />
+          <motion.div 
+            className="absolute bottom-0 right-80 w-2 h-14 bg-gradient-to-t from-green-700 to-green-500 rounded-t-full"
+            animate={{ 
+              rotateZ: [0, 4, -4, 0] 
+            }}
+            transition={{ duration: 3.5, repeat: Infinity, ease: "easeInOut" }}
+          />
+          
+          {/* Colorful Coral Formations */}
+          <div className="absolute bottom-0 left-40 w-8 h-6 bg-gradient-to-t from-pink-700 to-pink-500 rounded-t-lg">
+            <div className="absolute top-0 left-1 w-2 h-3 bg-pink-400 rounded-full"></div>
+            <div className="absolute top-0 right-1 w-2 h-4 bg-pink-600 rounded-full"></div>
+            <div className="absolute -top-1 left-3 w-3 h-2 bg-pink-500 rounded-full"></div>
+          </div>
+          
+          <div className="absolute bottom-0 right-60 w-10 h-8 bg-gradient-to-t from-orange-700 to-orange-500 rounded-t-lg">
+            <div className="absolute top-0 left-1 w-2 h-4 bg-orange-400 rounded-full"></div>
+            <div className="absolute top-0 right-2 w-3 h-3 bg-orange-600 rounded-full"></div>
+            <div className="absolute -top-1 left-4 w-2 h-3 bg-orange-500 rounded-full"></div>
+          </div>
+          
+          {/* Sea Anemones */}
+          <motion.div 
+            className="absolute bottom-0 left-100 w-6 h-4 bg-gradient-to-t from-purple-800 to-purple-600 rounded-t-full"
+            animate={{ 
+              scaleX: [1, 1.1, 0.9, 1],
+              scaleY: [1, 0.9, 1.1, 1] 
+            }}
+            transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+          >
+            <div className="absolute top-0 left-0 w-1 h-2 bg-purple-400 rounded-full"></div>
+            <div className="absolute top-0 left-1 w-1 h-3 bg-purple-300 rounded-full"></div>
+            <div className="absolute top-0 right-1 w-1 h-2 bg-purple-400 rounded-full"></div>
+            <div className="absolute top-0 right-0 w-1 h-2.5 bg-purple-300 rounded-full"></div>
+          </motion.div>
+          
+          <motion.div 
+            className="absolute bottom-0 right-100 w-5 h-3 bg-gradient-to-t from-teal-800 to-teal-600 rounded-t-full"
+            animate={{ 
+              scaleX: [1, 0.9, 1.1, 1],
+              scaleY: [1, 1.1, 0.9, 1] 
+            }}
+            transition={{ duration: 2.5, repeat: Infinity, ease: "easeInOut" }}
+          >
+            <div className="absolute top-0 left-0 w-1 h-1.5 bg-teal-400 rounded-full"></div>
+            <div className="absolute top-0 left-1 w-1 h-2 bg-teal-300 rounded-full"></div>
+            <div className="absolute top-0 right-1 w-1 h-1.5 bg-teal-400 rounded-full"></div>
+          </motion.div>
+          
+          {/* Additional Rocks and Formations */}
+          <div className="absolute bottom-0 left-1/4 w-8 h-4 bg-gray-600 rounded-t-lg">
+            <div className="absolute top-0 left-1 w-2 h-1 bg-gray-500 rounded-full"></div>
+            <div className="absolute top-0 right-1 w-1 h-2 bg-gray-700 rounded-full"></div>
+          </div>
+          <div className="absolute bottom-0 right-1/4 w-6 h-3 bg-gray-700 rounded-t-lg">
+            <div className="absolute top-0 left-1 w-1 h-1 bg-gray-600 rounded-full"></div>
+          </div>
+          <div className="absolute bottom-0 left-1/2 w-4 h-2 bg-gray-600 rounded-t-lg"></div>
+          
+          {/* Enhanced Bubbles */}
+          <motion.div 
+            className="absolute bottom-20 left-1/4 w-2 h-2 bg-blue-100 rounded-full opacity-60"
+            animate={{ 
+              y: [0, -100, -200],
+              x: [0, 10, -5, 0],
+              scale: [1, 1.2, 0.8, 0] 
+            }}
+            transition={{ duration: 4, repeat: Infinity, ease: "easeOut" }}
+          />
+          <motion.div 
+            className="absolute bottom-32 right-1/3 w-1 h-1 bg-blue-100 rounded-full opacity-60"
+            animate={{ 
+              y: [0, -120, -240],
+              x: [0, -8, 12, 0],
+              scale: [1, 1.3, 0.7, 0] 
+            }}
+            transition={{ duration: 5, repeat: Infinity, ease: "easeOut", delay: 1 }}
+          />
+          <motion.div 
+            className="absolute bottom-28 left-2/3 w-1.5 h-1.5 bg-blue-100 rounded-full opacity-60"
+            animate={{ 
+              y: [0, -80, -160],
+              x: [0, 5, -10, 0],
+              scale: [1, 1.1, 0.9, 0] 
+            }}
+            transition={{ duration: 3.5, repeat: Infinity, ease: "easeOut", delay: 2 }}
+          />
+          
+          {/* Bubble streams from sea anemones */}
+          <motion.div 
+            className="absolute bottom-8 left-102 w-1 h-1 bg-blue-200 rounded-full opacity-40"
+            animate={{ 
+              y: [0, -60, -120],
+              scale: [1, 1.5, 0] 
+            }}
+            transition={{ duration: 3, repeat: Infinity, ease: "easeOut" }}
+          />
+          <motion.div 
+            className="absolute bottom-6 right-102 w-0.5 h-0.5 bg-blue-200 rounded-full opacity-40"
+            animate={{ 
+              y: [0, -40, -80],
+              scale: [1, 1.2, 0] 
+            }}
+            transition={{ duration: 2.5, repeat: Infinity, ease: "easeOut", delay: 1.5 }}
+          />
+          
+          {/* Ocean floor with texture */}
+          <div className="absolute bottom-0 w-full h-12 bg-gradient-to-t from-amber-800 to-amber-600">
+            <div className="absolute top-0 left-0 w-full h-2 bg-amber-700 opacity-50"></div>
+            <div className="absolute top-2 left-4 w-2 h-1 bg-amber-900 rounded-full"></div>
+            <div className="absolute top-1 right-8 w-1 h-1 bg-amber-900 rounded-full"></div>
+            <div className="absolute top-2 left-1/2 w-1.5 h-1 bg-amber-900 rounded-full"></div>
+            <div className="absolute top-1 right-1/3 w-1 h-1 bg-amber-900 rounded-full"></div>
+          </div>
         </div>
       </div>
 
@@ -713,6 +914,7 @@ export function FishingGame() {
               <p>⬅️➡️ Flèches pour déplacer le bateau</p>
               <p>🎯 [ESPACE] pour contrôler le fil de pêche</p>
               <p>🐟 Cliquez au bon moment pour attraper!</p>
+              <p className="text-blue-600 font-semibold">💡 Les petits poissons bleus mordent plus souvent!</p>
             </div>
             
             <Button 
